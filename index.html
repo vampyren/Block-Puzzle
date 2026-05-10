@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Block Puzzle</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111827; color: #f9fafb; margin: 0; padding: 16px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .hud { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
+    .pill { background: #1f2937; padding: 8px 12px; border-radius: 8px; }
+    button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    .layout { display: grid; grid-template-columns: 420px 1fr; gap: 20px; }
+    canvas { background: #0b1220; border: 1px solid #334155; border-radius: 8px; }
+    .tray { display: flex; gap: 8px; margin-top: 12px; }
+    .slot { width: 120px; height: 120px; display: grid; place-items: center; background: #1f2937; border-radius: 8px; border: 2px solid transparent; }
+    .slot.selected { border-color: #60a5fa; }
+    .small { font-size: 12px; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hud">
+    <div class="pill">Score: <strong id="score">0</strong></div>
+    <div class="pill">Combo: <strong id="combo">0</strong></div>
+    <div class="pill" id="status">Playing</div>
+    <button id="resetBtn" type="button">Reset</button>
+  </div>
+  <div class="layout">
+    <canvas id="board" width="420" height="420"></canvas>
+    <div>
+      <h3>Pieces</h3>
+      <div class="tray" id="tray"></div>
+      <p class="small">Select a piece (1-3 or click), then click board cell to place.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const CFG = Object.freeze({ boardSize: 10, cell: 40, pad: 10, dropMs: 150 });
+
+  // ----- state init/reset -----
+  const state = createInitialState();
+  const ui = bindUi();
+  wireInputHandlers(ui, state);
+  resetGame(state, ui);
+  renderAll(ui, state);
+
+  function createInitialState() {
+    return {
+      grid: [],
+      pieces: [],
+      selectedPieceId: null,
+      score: 0,
+      combo: 0,
+      gameOver: false,
+      animating: false,
+      pendingLock: null
+    };
+  }
+
+  function resetGame(s, uiRefs) {
+    s.grid = Array.from({ length: CFG.boardSize }, () => Array(CFG.boardSize).fill(0));
+    s.pieces = spawnPieceSet();
+    s.selectedPieceId = s.pieces[0]?.id ?? null;
+    s.score = 0;
+    s.combo = 0;
+    s.gameOver = false;
+    s.animating = false;
+    s.pendingLock = null;
+    renderAll(uiRefs, s);
+  }
+
+  // ----- input handling -----
+  function bindUi() {
+    return {
+      board: document.getElementById('board'),
+      tray: document.getElementById('tray'),
+      score: document.getElementById('score'),
+      combo: document.getElementById('combo'),
+      status: document.getElementById('status'),
+      resetBtn: document.getElementById('resetBtn')
+    };
+  }
+
+  function wireInputHandlers(uiRefs, s) {
+    uiRefs.resetBtn.addEventListener('click', () => resetGame(s, uiRefs));
+    uiRefs.board.addEventListener('click', (ev) => onBoardClick(ev, uiRefs, s));
+    document.addEventListener('keydown', (ev) => onKeyDown(ev, uiRefs, s));
+    uiRefs.tray.addEventListener('click', (ev) => onTrayClick(ev, uiRefs, s));
+  }
+
+  function onKeyDown(ev, uiRefs, s) {
+    if (s.gameOver || s.animating) return;
+    if (!['1','2','3'].includes(ev.key)) return;
+    const idx = Number(ev.key) - 1;
+    if (s.pieces[idx]) {
+      s.selectedPieceId = s.pieces[idx].id;
+      renderAll(uiRefs, s);
+    }
+  }
+
+  function onTrayClick(ev, uiRefs, s) {
+    if (s.gameOver || s.animating) return;
+    const slot = ev.target.closest('[data-piece-id]');
+    if (!slot) return;
+    s.selectedPieceId = slot.dataset.pieceId;
+    renderAll(uiRefs, s);
+  }
+
+  function onBoardClick(ev, uiRefs, s) {
+    if (s.gameOver || s.animating || !s.selectedPieceId) return;
+    const { col, row } = eventToCell(ev, uiRefs.board);
+    const piece = s.pieces.find(p => p.id === s.selectedPieceId);
+    if (!piece) return;
+    if (!canPlacePiece(s.grid, piece, col, row)) return;
+    startDropAnimator(uiRefs, s, piece, col, row);
+  }
+
+  // ----- placement validation -----
+  function canPlacePiece(grid, piece, baseCol, baseRow) {
+    return piece.cells.every(([dx, dy]) => {
+      const x = baseCol + dx;
+      const y = baseRow + dy;
+      return x >= 0 && x < CFG.boardSize && y >= 0 && y < CFG.boardSize && grid[y][x] === 0;
+    });
+  }
+
+  // ----- drop animator -----
+  function startDropAnimator(uiRefs, s, piece, col, row) {
+    s.animating = true;
+    s.pendingLock = { piece, col, row, t0: performance.now() };
+    const tick = (now) => {
+      if (!s.pendingLock) return;
+      const p = Math.min(1, (now - s.pendingLock.t0) / CFG.dropMs);
+      renderAll(uiRefs, s, p);
+      if (p < 1) {
+        requestAnimationFrame(tick);
+        return;
+      }
+      finishLockAndResolve(uiRefs, s);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // ----- lock and clear resolver -----
+  function finishLockAndResolve(uiRefs, s) {
+    const { piece, col, row } = s.pendingLock;
+    lockPiece(s.grid, piece, col, row);
+    s.pieces = s.pieces.filter(p => p.id !== piece.id);
+    const cleared = clearLines(s.grid);
+    applyScoringAndCombo(s, piece.cells.length, cleared);
+    if (s.pieces.length === 0) {
+      s.pieces = spawnPieceSet();
+      s.selectedPieceId = s.pieces[0]?.id ?? null;
+    }
+    s.pendingLock = null;
+    s.animating = false;
+    resolveGameOver(s);
+    renderAll(uiRefs, s);
+  }
+
+  function lockPiece(grid, piece, baseCol, baseRow) {
+    for (const [dx, dy] of piece.cells) grid[baseRow + dy][baseCol + dx] = piece.color;
+  }
+
+  function clearLines(grid) {
+    const fullRows = [];
+    const fullCols = [];
+    for (let y = 0; y < CFG.boardSize; y++) if (grid[y].every(Boolean)) fullRows.push(y);
+    for (let x = 0; x < CFG.boardSize; x++) {
+      let ok = true;
+      for (let y = 0; y < CFG.boardSize; y++) if (!grid[y][x]) ok = false;
+      if (ok) fullCols.push(x);
+    }
+    for (const y of fullRows) for (let x = 0; x < CFG.boardSize; x++) grid[y][x] = 0;
+    for (const x of fullCols) for (let y = 0; y < CFG.boardSize; y++) grid[y][x] = 0;
+    return fullRows.length + fullCols.length;
+  }
+
+  // ----- scoring/combo -----
+  function applyScoringAndCombo(s, placedCells, clearedLines) {
+    s.score += placedCells * 10;
+    if (clearedLines > 0) {
+      s.combo += 1;
+      s.score += clearedLines * 100 * (1 + s.combo * 0.25);
+    } else {
+      s.combo = 0;
+    }
+  }
+
+  // ----- game-over detection -----
+  function resolveGameOver(s) {
+    if (!s.pieces.some(piece => anyPlacementExists(s.grid, piece))) s.gameOver = true;
+  }
+
+  function anyPlacementExists(grid, piece) {
+    for (let y = 0; y < CFG.boardSize; y++) {
+      for (let x = 0; x < CFG.boardSize; x++) if (canPlacePiece(grid, piece, x, y)) return true;
+    }
+    return false;
+  }
+
+  // ----- rendering -----
+  function renderAll(uiRefs, s, animProgress = null) {
+    renderHud(uiRefs, s);
+    renderBoard(uiRefs.board, s, animProgress);
+    renderTray(uiRefs.tray, s);
+  }
+
+  function renderHud(uiRefs, s) {
+    uiRefs.score.textContent = Math.floor(s.score);
+    uiRefs.combo.textContent = s.combo;
+    uiRefs.status.textContent = s.gameOver ? 'Game Over' : (s.animating ? 'Dropping...' : 'Playing');
+  }
+
+  function renderBoard(canvas, s, animProgress) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawGrid(ctx);
+    for (let y = 0; y < CFG.boardSize; y++) {
+      for (let x = 0; x < CFG.boardSize; x++) if (s.grid[y][x]) drawCell(ctx, x, y, s.grid[y][x]);
+    }
+    if (s.pendingLock && animProgress !== null) {
+      const { piece, col, row } = s.pendingLock;
+      const yOffset = (1 - animProgress) * CFG.cell * 1.5;
+      piece.cells.forEach(([dx, dy]) => drawCell(ctx, col + dx, row + dy, piece.color, yOffset));
+    }
+  }
+
+  function renderTray(tray, s) {
+    tray.innerHTML = '';
+    for (const p of s.pieces) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'slot' + (p.id === s.selectedPieceId ? ' selected' : '');
+      el.dataset.pieceId = p.id;
+      el.innerHTML = miniSvg(p.cells, p.color);
+      tray.appendChild(el);
+    }
+  }
+
+  function drawGrid(ctx) {
+    for (let i = 0; i <= CFG.boardSize; i++) {
+      const px = CFG.pad + i * CFG.cell;
+      ctx.strokeStyle = '#334155';
+      ctx.beginPath(); ctx.moveTo(CFG.pad, px); ctx.lineTo(CFG.pad + CFG.boardSize * CFG.cell, px); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px, CFG.pad); ctx.lineTo(px, CFG.pad + CFG.boardSize * CFG.cell); ctx.stroke();
+    }
+  }
+
+  function drawCell(ctx, x, y, color, yOffset = 0) {
+    const px = CFG.pad + x * CFG.cell + 2;
+    const py = CFG.pad + y * CFG.cell + 2 - yOffset;
+    ctx.fillStyle = color;
+    ctx.fillRect(px, py, CFG.cell - 4, CFG.cell - 4);
+  }
+
+  function eventToCell(ev, canvas) {
+    const r = canvas.getBoundingClientRect();
+    const x = Math.floor((ev.clientX - r.left - CFG.pad) / CFG.cell);
+    const y = Math.floor((ev.clientY - r.top - CFG.pad) / CFG.cell);
+    return { col: x, row: y };
+  }
+
+  function spawnPieceSet() {
+    return Array.from({ length: 3 }, () => randomPiece());
+  }
+
+  function randomPiece() {
+    const shapes = [
+      [[0,0]], [[0,0],[1,0]], [[0,0],[0,1]], [[0,0],[1,0],[0,1]], [[0,0],[1,0],[2,0]], [[0,0],[0,1],[0,2]], [[0,0],[1,0],[0,1],[1,1]]
+    ];
+    const palette = ['#22d3ee','#f59e0b','#34d399','#f87171','#a78bfa'];
+    return { id: crypto.randomUUID(), cells: shapes[Math.floor(Math.random() * shapes.length)], color: palette[Math.floor(Math.random() * palette.length)] };
+  }
+
+  function miniSvg(cells, color) {
+    const s = 24;
+    const blocks = cells.map(([x, y]) => `<rect x="${x*s+4}" y="${y*s+4}" width="${s-6}" height="${s-6}" fill="${color}"/>`).join('');
+    return `<svg width="100" height="100" viewBox="0 0 100 100" aria-hidden="true">${blocks}</svg>`;
+  }
+})();
+</script>
+</body>
+</html>

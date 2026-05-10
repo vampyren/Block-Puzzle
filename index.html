@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Block Puzzle</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #111; }
+    canvas { display: block; margin: 0 auto; background: #1d1d1d; touch-action: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="480" height="640"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const CELL_SIZE = 40;
+    const GRID_ORIGIN_X = 40;
+    const GRID_ORIGIN_Y = 120;
+    const GRID_SIZE = 10;
+
+    // Lightweight particle state for celebratory clear effects.
+    const particles = [];
+    const MAX_PARTICLES = 300;
+
+    function spawnBurst(x, y, color, count) {
+      // Keep bursts light on mobile by capping both burst size and total list size.
+      const burstCount = Math.min(count, 24);
+      const room = Math.max(0, MAX_PARTICLES - particles.length);
+      const toSpawn = Math.min(burstCount, room);
+
+      for (let i = 0; i < toSpawn; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.05 + Math.random() * 0.25; // px/ms
+        particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 0.08,
+          life: 240 + Math.random() * 240,
+          maxLife: 240 + Math.random() * 240,
+          size: 1.5 + Math.random() * 3,
+          color,
+          gravity: 0.00028 + Math.random() * 0.0002,
+          drag: 0.992,
+        });
+      }
+    }
+
+    function updateParticles(deltaMs) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= deltaMs;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        p.vx *= Math.pow(p.drag, deltaMs / 16.67);
+        p.vy = p.vy * Math.pow(p.drag, deltaMs / 16.67) + p.gravity * deltaMs;
+        p.x += p.vx * deltaMs;
+        p.y += p.vy * deltaMs;
+      }
+
+      if (particles.length > MAX_PARTICLES) {
+        particles.splice(0, particles.length - MAX_PARTICLES);
+      }
+    }
+
+    function drawParticles(ctx) {
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - p.size * 0.5, p.y - p.size * 0.5, p.size, p.size);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Example clear event hook. This immediately mutates state while particles run asynchronously.
+    function emitClearParticles(clearedCells) {
+      for (let i = 0; i < clearedCells.length; i++) {
+        const c = clearedCells[i];
+        const centerX = GRID_ORIGIN_X + c.col * CELL_SIZE + CELL_SIZE * 0.5;
+        const centerY = GRID_ORIGIN_Y + c.row * CELL_SIZE + CELL_SIZE * 0.5;
+        spawnBurst(centerX, centerY, c.color || '#ffd54f', 10);
+      }
+    }
+
+    // Minimal demo scene to show integration points.
+    let lastMs = performance.now();
+    function render(nowMs) {
+      const deltaMs = Math.min(50, nowMs - lastMs);
+      lastMs = nowMs;
+
+      // Update game first so gameplay transitions never wait on particles.
+      updateGameState(deltaMs);
+      updateParticles(deltaMs);
+
+      drawGame(ctx);
+      drawParticles(ctx);
+      requestAnimationFrame(render);
+    }
+
+    function updateGameState() {
+      // Stub: your puzzle step/update logic.
+    }
+
+    function drawGame(ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#333';
+      for (let r = 0; r <= GRID_SIZE; r++) {
+        ctx.beginPath();
+        ctx.moveTo(GRID_ORIGIN_X, GRID_ORIGIN_Y + r * CELL_SIZE);
+        ctx.lineTo(GRID_ORIGIN_X + GRID_SIZE * CELL_SIZE, GRID_ORIGIN_Y + r * CELL_SIZE);
+        ctx.stroke();
+      }
+      for (let c = 0; c <= GRID_SIZE; c++) {
+        ctx.beginPath();
+        ctx.moveTo(GRID_ORIGIN_X + c * CELL_SIZE, GRID_ORIGIN_Y);
+        ctx.lineTo(GRID_ORIGIN_X + c * CELL_SIZE, GRID_ORIGIN_Y + GRID_SIZE * CELL_SIZE);
+        ctx.stroke();
+      }
+    }
+
+    // Demo trigger to visualize clear effects.
+    canvas.addEventListener('click', () => {
+      const demoCells = [
+        { row: 2, col: 3, color: '#4dd0e1' },
+        { row: 2, col: 4, color: '#4dd0e1' },
+        { row: 2, col: 5, color: '#4dd0e1' },
+        { row: 5, col: 4, color: '#ff8a65' },
+      ];
+      emitClearParticles(demoCells);
+    });
+
+    requestAnimationFrame(render);
+  </script>
+</body>
+</html>

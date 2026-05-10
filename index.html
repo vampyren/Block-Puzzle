@@ -17,5 +17,614 @@
     <div class="hint">Drag the blue piece. Green ghost = valid placement, red ghost = invalid.</div>
   </div>
   <script src="main.js"></script>
+  <title>Block Puzzle</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #111; }
+    canvas { display: block; margin: 0 auto; background: #1d1d1d; touch-action: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="480" height="640"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    const CELL_SIZE = 40;
+    const GRID_ORIGIN_X = 40;
+    const GRID_ORIGIN_Y = 120;
+    const GRID_SIZE = 10;
+
+    // Lightweight particle state for celebratory clear effects.
+    const particles = [];
+    const MAX_PARTICLES = 300;
+
+    function spawnBurst(x, y, color, count) {
+      // Keep bursts light on mobile by capping both burst size and total list size.
+      const burstCount = Math.min(count, 24);
+      const room = Math.max(0, MAX_PARTICLES - particles.length);
+      const toSpawn = Math.min(burstCount, room);
+
+      for (let i = 0; i < toSpawn; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 0.05 + Math.random() * 0.25; // px/ms
+        particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 0.08,
+          life: 240 + Math.random() * 240,
+          maxLife: 240 + Math.random() * 240,
+          size: 1.5 + Math.random() * 3,
+          color,
+          gravity: 0.00028 + Math.random() * 0.0002,
+          drag: 0.992,
+        });
+      }
+    }
+
+    function updateParticles(deltaMs) {
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= deltaMs;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        p.vx *= Math.pow(p.drag, deltaMs / 16.67);
+        p.vy = p.vy * Math.pow(p.drag, deltaMs / 16.67) + p.gravity * deltaMs;
+        p.x += p.vx * deltaMs;
+        p.y += p.vy * deltaMs;
+      }
+
+      if (particles.length > MAX_PARTICLES) {
+        particles.splice(0, particles.length - MAX_PARTICLES);
+      }
+    }
+
+    function drawParticles(ctx) {
+      for (let i = 0; i < particles.length; i++) {
+        const p = particles[i];
+        const alpha = Math.max(0, p.life / p.maxLife);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - p.size * 0.5, p.y - p.size * 0.5, p.size, p.size);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // Example clear event hook. This immediately mutates state while particles run asynchronously.
+    function emitClearParticles(clearedCells) {
+      for (let i = 0; i < clearedCells.length; i++) {
+        const c = clearedCells[i];
+        const centerX = GRID_ORIGIN_X + c.col * CELL_SIZE + CELL_SIZE * 0.5;
+        const centerY = GRID_ORIGIN_Y + c.row * CELL_SIZE + CELL_SIZE * 0.5;
+        spawnBurst(centerX, centerY, c.color || '#ffd54f', 10);
+      }
+    }
+
+    // Minimal demo scene to show integration points.
+    let lastMs = performance.now();
+    function render(nowMs) {
+      const deltaMs = Math.min(50, nowMs - lastMs);
+      lastMs = nowMs;
+
+      // Update game first so gameplay transitions never wait on particles.
+      updateGameState(deltaMs);
+      updateParticles(deltaMs);
+
+      drawGame(ctx);
+      drawParticles(ctx);
+      requestAnimationFrame(render);
+    }
+
+    function updateGameState() {
+      // Stub: your puzzle step/update logic.
+    }
+
+    function drawGame(ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = '#333';
+      for (let r = 0; r <= GRID_SIZE; r++) {
+        ctx.beginPath();
+        ctx.moveTo(GRID_ORIGIN_X, GRID_ORIGIN_Y + r * CELL_SIZE);
+        ctx.lineTo(GRID_ORIGIN_X + GRID_SIZE * CELL_SIZE, GRID_ORIGIN_Y + r * CELL_SIZE);
+        ctx.stroke();
+      }
+      for (let c = 0; c <= GRID_SIZE; c++) {
+        ctx.beginPath();
+        ctx.moveTo(GRID_ORIGIN_X + c * CELL_SIZE, GRID_ORIGIN_Y);
+        ctx.lineTo(GRID_ORIGIN_X + c * CELL_SIZE, GRID_ORIGIN_Y + GRID_SIZE * CELL_SIZE);
+        ctx.stroke();
+      }
+    }
+
+    // Demo trigger to visualize clear effects.
+    canvas.addEventListener('click', () => {
+      const demoCells = [
+        { row: 2, col: 3, color: '#4dd0e1' },
+        { row: 2, col: 4, color: '#4dd0e1' },
+        { row: 2, col: 5, color: '#4dd0e1' },
+        { row: 5, col: 4, color: '#ff8a65' },
+      ];
+      emitClearParticles(demoCells);
+    });
+
+    requestAnimationFrame(render);
+  </script>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #101622; color: #eef3ff; }
+    .wrap { display: grid; gap: 12px; max-width: 980px; margin: 0 auto; }
+    .controls { display: flex; align-items: center; gap: 12px; }
+    canvas { background: #162035; border: 1px solid #2f3f62; border-radius: 10px; touch-action: none; }
+    .hint { color: #b9c7ea; font-size: 14px; }
+    button { padding: 8px 12px; border-radius: 6px; border: none; background: #4d7eff; color: white; cursor: pointer; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="controls">
+    <label for="level">Level speed:</label>
+    <select id="level">
+      <option value="450">Level 1 (slow)</option>
+      <option value="320" selected>Level 2</option>
+      <option value="220">Level 3</option>
+      <option value="150">Level 4 (fast)</option>
+    </select>
+    <div>Score: <span id="score">0</span></div>
+    <button id="reset">Reset</button>
+  </div>
+  <canvas id="game" width="700" height="620"></canvas>
+  <div class="hint">Drag a piece from the tray to the board. During animated drop, input is locked.</div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const levelSelector = document.getElementById('level');
+  const scoreNode = document.getElementById('score');
+
+  const boardRows = 10;
+  const boardCols = 10;
+  const cellSize = 40;
+  const boardX = 20;
+  const boardY = 20;
+  const trayY = boardY + boardRows * cellSize + 38;
+
+  let board = Array.from({ length: boardRows }, () => Array(boardCols).fill(0));
+  let score = 0;
+  let busy = false;
+
+  let pieces = [];
+  let dragState = null;
+  let activeDrop = null;
+
+  const colors = ['#5edfff', '#fdbf50', '#7df76f', '#d38fff', '#ff7b8a'];
+
+  const SHAPES = [
+    [[0,0]],
+    [[0,0],[1,0]],
+    [[0,0],[0,1]],
+    [[0,0],[1,0],[0,1]],
+    [[0,0],[1,0],[2,0]],
+    [[0,0],[0,1],[1,1]],
+    [[0,0],[1,0],[0,1],[1,1]],
+    [[0,0],[1,0],[2,0],[1,1]],
+  ];
+
+  function randomPiece() {
+    const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)].map(([x,y]) => [x,y]);
+    return {
+      shape,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      x: 0,
+      y: trayY,
+      inTray: true,
+    };
+  }
+
+  function buildTray() {
+    pieces = [randomPiece(), randomPiece(), randomPiece()];
+    let x = boardX;
+    for (const p of pieces) {
+      p.x = x;
+      x += 170;
+    }
+  }
+
+  function updateScore(v) {
+    score = v;
+    scoreNode.textContent = String(score);
+  }
+
+  function shapeBounds(shape) {
+    const xs = shape.map(s => s[0]);
+    const ys = shape.map(s => s[1]);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
+  }
+
+  function drawBoard() {
+    ctx.fillStyle = '#1d2942';
+    ctx.fillRect(boardX, boardY, boardCols * cellSize, boardRows * cellSize);
+    for (let r = 0; r < boardRows; r++) {
+      for (let c = 0; c < boardCols; c++) {
+        ctx.strokeStyle = '#2f3f62';
+        ctx.strokeRect(boardX + c * cellSize, boardY + r * cellSize, cellSize, cellSize);
+        if (board[r][c]) {
+          ctx.fillStyle = board[r][c];
+          ctx.fillRect(boardX + c * cellSize + 3, boardY + r * cellSize + 3, cellSize - 6, cellSize - 6);
+        }
+      }
+    }
+  }
+
+  function drawPieceAtGrid(piece, row, col, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = piece.color;
+    for (const [dx, dy] of piece.shape) {
+      const rr = row + dy;
+      const cc = col + dx;
+      ctx.fillRect(boardX + cc * cellSize + 3, boardY + rr * cellSize + 3, cellSize - 6, cellSize - 6);
+    }
+    ctx.restore();
+  }
+
+  function drawTrayAndDragged() {
+    for (const p of pieces) {
+      if (!p.inTray) continue;
+      const bounds = shapeBounds(p.shape);
+      for (const [dx, dy] of p.shape) {
+        const x = p.x + (dx - bounds.minX) * cellSize;
+        const y = p.y + (dy - bounds.minY) * cellSize;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(x + 3, y + 3, cellSize - 6, cellSize - 6);
+        ctx.strokeStyle = '#223357';
+        ctx.strokeRect(x + 3, y + 3, cellSize - 6, cellSize - 6);
+      }
+    }
+
+    if (dragState && dragState.piece) {
+      const p = dragState.piece;
+      for (const [dx, dy] of p.shape) {
+        const x = dragState.dragX + dx * cellSize;
+        const y = dragState.dragY + dy * cellSize;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(x + 3, y + 3, cellSize - 6, cellSize - 6);
+      }
+    }
+  }
+
+  function drawActiveDrop() {
+    if (!activeDrop) return;
+    drawPieceAtGrid(activeDrop.piece, activeDrop.currentRow, activeDrop.col, 0.95);
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBoard();
+    drawTrayAndDragged();
+    drawActiveDrop();
+  }
+
+  function cellFromPixel(x, y) {
+    return {
+      col: Math.floor((x - boardX) / cellSize),
+      row: Math.floor((y - boardY) / cellSize),
+    };
+  }
+
+  function canPlace(piece, row, col) {
+    for (const [dx, dy] of piece.shape) {
+      const rr = row + dy;
+      const cc = col + dx;
+      if (rr < 0 || cc < 0 || rr >= boardRows || cc >= boardCols) return false;
+      if (board[rr][cc]) return false;
+    }
+    return true;
+  }
+
+  function clearLinesAndScore() {
+    let clearedRows = 0;
+    let clearedCols = 0;
+
+    for (let r = 0; r < boardRows; r++) {
+      if (board[r].every(Boolean)) {
+        for (let c = 0; c < boardCols; c++) board[r][c] = 0;
+        clearedRows++;
+      }
+    }
+
+    for (let c = 0; c < boardCols; c++) {
+      let full = true;
+      for (let r = 0; r < boardRows; r++) {
+        if (!board[r][c]) { full = false; break; }
+      }
+      if (full) {
+        for (let r = 0; r < boardRows; r++) board[r][c] = 0;
+        clearedCols++;
+      }
+    }
+
+    const bonus = (clearedRows + clearedCols) * 100;
+    if (bonus > 0) updateScore(score + bonus);
+  }
+
+  function lockPieceAtomic(piece, row, col) {
+    for (const [dx, dy] of piece.shape) {
+      board[row + dy][col + dx] = piece.color;
+    }
+    updateScore(score + piece.shape.length * 10);
+    clearLinesAndScore();
+  }
+
+  function startDropAnimation(piece, targetRow, col) {
+    const minDy = Math.min(...piece.shape.map(([,dy]) => dy));
+    const startAboveBoard = -1 - minDy;
+
+    activeDrop = {
+      piece,
+      targetRow,
+      col,
+      currentRow: startAboveBoard,
+      rowIntervalMs: Number(levelSelector.value),
+      lastTickAt: performance.now(),
+    };
+
+    busy = true;
+    stepDrop();
+  }
+
+  function stepDrop() {
+    if (!activeDrop) return;
+    const now = performance.now();
+
+    if (now - activeDrop.lastTickAt >= activeDrop.rowIntervalMs) {
+      activeDrop.lastTickAt = now;
+      if (activeDrop.currentRow < activeDrop.targetRow) {
+        activeDrop.currentRow += 1;
+      }
+    }
+
+    render();
+
+    if (activeDrop.currentRow === activeDrop.targetRow) {
+      lockPieceAtomic(activeDrop.piece, activeDrop.targetRow, activeDrop.col);
+      const donePiece = activeDrop.piece;
+      activeDrop = null;
+      busy = false;
+      donePiece.inTray = false;
+      if (pieces.every(p => !p.inTray)) buildTray();
+      render();
+      return;
+    }
+
+    setTimeout(stepDrop, 8);
+  }
+
+  function pickPiece(px, py) {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const p = pieces[i];
+      if (!p.inTray) continue;
+      const b = shapeBounds(p.shape);
+      const w = (b.maxX - b.minX + 1) * cellSize;
+      const h = (b.maxY - b.minY + 1) * cellSize;
+      if (px >= p.x && px <= p.x + w && py >= p.y && py <= p.y + h) return p;
+    }
+    return null;
+  }
+
+  function pointerPos(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  function beginDrag(ev) {
+    if (busy) return;
+    const {x, y} = pointerPos(ev);
+    const piece = pickPiece(x, y);
+    if (!piece) return;
+    dragState = { piece, offsetX: x - piece.x, offsetY: y - piece.y, dragX: piece.x, dragY: piece.y };
+    render();
+  }
+
+  function moveDrag(ev) {
+    if (!dragState || busy) return;
+    const {x, y} = pointerPos(ev);
+    dragState.dragX = x - dragState.offsetX;
+    dragState.dragY = y - dragState.offsetY;
+    render();
+  }
+  
+  function endDrag(ev) {
+    if (!dragState || busy) return;
+    const {x, y} = pointerPos(ev);
+    const piece = dragState.piece;
+    const {row, col} = cellFromPixel(x, y);
+
+    if (canPlace(piece, row, col)) {
+      // Two-phase drop: capture transient drop state and animate per-row ticks.
+      startDropAnimation(piece, row, col);
+    }
+
+    dragState = null;
+    render();
+  }
+
+  function resetGame() {
+    board = Array.from({ length: boardRows }, () => Array(boardCols).fill(0));
+    busy = false;
+    dragState = null;
+    activeDrop = null;
+    updateScore(0);
+    buildTray();
+    render();
+  }
+
+  canvas.addEventListener('pointerdown', beginDrag);
+  canvas.addEventListener('pointermove', moveDrag);
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  document.getElementById('reset').addEventListener('click', resetGame);
+
+  resetGame();
+})();
+</script>
+  <title>Block Bloom</title>
+</head>
+<body>
+
+<section id="ktvh-block-puzzle" class="kbp-wrap" aria-label="Block puzzle game">
+  <div class="kbp-shell">
+    <div class="kbp-topbar">
+      <div class="kbp-scorepill">
+        <span class="kbp-icon">👑</span>
+        <div>
+          <small>Score</small>
+          <strong id="kbp-score">0</strong>
+        </div>
+      </div>
+
+      <div class="kbp-goals">
+        <div class="kbp-goal"><span>⭐</span><strong id="kbp-stars">0</strong><small>/ 7</small></div>
+        <div class="kbp-goal"><span>💎</span><strong id="kbp-gems">0</strong><small>/ 7</small></div>
+      </div>
+
+      <button id="kbp-new-game" class="kbp-gear" type="button" title="New game">↻</button>
+    </div>
+
+    <div class="kbp-title">
+      <p>Mini game</p>
+      <h2>Block Bloom</h2>
+      <span>Drag a piece onto the board. It drops as one shape, row by row. Clear full rows or columns for fireworks.</span>
+    </div>
+
+    <div class="kbp-gamearea">
+      <div class="kbp-board-wrap">
+        <canvas id="kbp-board" width="760" height="760" aria-label="Game board"></canvas>
+        <div id="kbp-combo" class="kbp-combo" hidden></div>
+        <div id="kbp-overlay" class="kbp-overlay" hidden>
+          <div>
+            <h3>Game over</h3>
+            <p id="kbp-final-score">Score: 0</p>
+            <button id="kbp-play-again" type="button">Play again</button>
+          </div>
+        </div>
+      </div>
+
+      <aside class="kbp-side">
+        <div class="kbp-next">
+          <div class="kbp-side-title">Your blocks</div>
+          <div id="kbp-pieces" class="kbp-pieces" aria-label="Available pieces"></div>
+        </div>
+
+        <div class="kbp-levelbox">
+          <label for="kbp-level">Drop level</label>
+          <select id="kbp-level">
+            <option value="1">Level 1 - slow</option>
+            <option value="2" selected>Level 2 - relaxed</option>
+            <option value="3">Level 3 - normal</option>
+            <option value="4">Level 4 - fast</option>
+            <option value="5">Level 5 - very fast</option>
+          </select>
+          <p id="kbp-speed-label">One row every 0.8s</p>
+        </div>
+
+        <div class="kbp-actions">
+          <button id="kbp-undo" type="button" disabled>Undo</button>
+        </div>
+        <p class="kbp-help">Twist: pieces drop into place as whole shapes. Clearing many lines gives bigger fireworks and combo points.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+
+<style>
+  .kbp-wrap { --kbp-ink:#fff; --kbp-panel:rgba(28,42,103,.58); --kbp-board:#202a5d; --kbp-yellow:#ffd22e; box-sizing:border-box; min-height:100svh; display:grid; place-items:center; padding:clamp(14px,2.6vw,34px); font-family:Inter,ui-sans-serif,system-ui; color:var(--kbp-ink); background:radial-gradient(circle at 12% 10%, rgba(236, 77, 255, 0.42), transparent 26%),radial-gradient(circle at 86% 16%, rgba(47, 114, 255, 0.42), transparent 28%),radial-gradient(circle at 56% 92%, rgba(255, 210, 46, 0.22), transparent 28%),linear-gradient(150deg, #395ac2 0%, #536fc9 46%, #364bb0 100%); overflow:hidden; }
+  .kbp-wrap *, .kbp-wrap *::before, .kbp-wrap *::after { box-sizing: border-box; }
+  .kbp-shell { width:min(100%,1240px); min-height:min(920px,calc(100svh - 28px)); display:grid; grid-template-rows:auto auto 1fr; gap:clamp(12px,1.5vw,20px); padding:clamp(14px,2vw,24px); border-radius:34px; background:linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.07)); border:1px solid rgba(255,255,255,0.20); box-shadow:0 34px 110px rgba(10,16,55,0.38); backdrop-filter:blur(18px); }
+  .kbp-topbar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:16px; }
+  .kbp-scorepill { justify-self:start; display:flex; align-items:center; gap:12px; padding:10px 16px; border-radius:999px; color:#fff; }
+  .kbp-scorepill .kbp-icon { font-size:clamp(2rem,4vw,3.4rem); }
+  .kbp-scorepill strong { display:block; font-size:clamp(2.1rem,4vw,4rem); line-height:.9; color:var(--kbp-yellow); }
+  .kbp-goals { justify-self:center; display:flex; gap:14px; padding:10px 18px; border-radius:24px; background:rgba(21, 30, 83, 0.58); }
+  .kbp-goal { display:flex; align-items:center; gap:7px; min-width:105px; justify-content:center; }
+  .kbp-gear { justify-self:end; width:clamp(54px,6vw,78px); height:clamp(54px,6vw,78px); border:0; border-radius:22px; background:rgba(255,255,255,0.20); color:#e8f8ff; font-size:clamp(2.1rem,4vw,3.4rem); cursor:pointer; }
+  .kbp-title { text-align:center; }
+  .kbp-title h2 { margin:0; font-size:clamp(2rem,4vw,4.4rem); }
+  .kbp-gamearea { display:grid; grid-template-columns:minmax(520px,min(72svh,760px)) minmax(260px,1fr); gap:clamp(18px,3vw,38px); }
+  .kbp-board-wrap { position:relative; width:min(100%,72svh,760px); aspect-ratio:1; border-radius:26px; padding:8px; background:linear-gradient(145deg, rgba(255,255,255,.22), rgba(9,16,56,.32)); }
+  #kbp-board { display:block; width:100%; height:100%; border-radius:20px; background:var(--kbp-board); touch-action:none; }
+  .kbp-side { display:grid; gap:14px; }
+  .kbp-next, .kbp-actions, .kbp-help, .kbp-levelbox { border:1px solid rgba(255,255,255,0.18); border-radius:28px; background:var(--kbp-panel); padding:clamp(14px,2vw,22px); }
+  .kbp-pieces { display:grid; grid-template-columns:1fr; gap:14px; }
+  .kbp-piece { min-height:clamp(116px,15svh,172px); display:grid; place-items:center; border:1px solid rgba(255,255,255,0.18); border-radius:24px; cursor:grab; }
+  .kbp-piece.used { opacity:.22; pointer-events:none; }
+  .kbp-mini-grid { display:grid; gap:5px; }
+  .kbp-mini-cell { width:clamp(22px,2.1vw,34px); height:clamp(22px,2.1vw,34px); border-radius:7px; background:linear-gradient(145deg, color-mix(in srgb, var(--piece-color), white 28%), var(--piece-color) 52%, color-mix(in srgb, var(--piece-color), black 24%)); }
+  .kbp-mini-cell.empty { background:transparent; }
+  .kbp-levelbox select { width:100%; border:0; border-radius:16px; padding:13px 14px; font-weight:900; }
+  .kbp-actions button, .kbp-overlay button { border:0; border-radius:999px; padding:13px 18px; font-weight:950; cursor:pointer; }
+  .kbp-combo { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); z-index:4; pointer-events:none; font-size:clamp(2.6rem,7vw,6.4rem); font-weight:1000; }
+  .kbp-combo[hidden], .kbp-overlay[hidden] { display:none !important; }
+  .kbp-overlay { position:absolute; inset:8px; z-index:5; display:grid; place-items:center; border-radius:20px; background:rgba(13,18,54,.78); color:#fff; text-align:center; }
+  @media (max-width:980px){ .kbp-gamearea{grid-template-columns:1fr;} .kbp-pieces{grid-template-columns:repeat(3,minmax(82px,1fr));} }
+</style>
+
+<script>
+(() => {
+  const root = document.getElementById('ktvh-block-puzzle');
+  if (!root) return;
+  const canvas = root.querySelector('#kbp-board');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = root.querySelector('#kbp-score');
+  const starsEl = root.querySelector('#kbp-stars');
+  const gemsEl = root.querySelector('#kbp-gems');
+  const piecesEl = root.querySelector('#kbp-pieces');
+  const levelEl = root.querySelector('#kbp-level');
+  const speedLabelEl = root.querySelector('#kbp-speed-label');
+  const newGameBtn = root.querySelector('#kbp-new-game');
+  const undoBtn = root.querySelector('#kbp-undo');
+  const overlay = root.querySelector('#kbp-overlay');
+  const finalScoreEl = root.querySelector('#kbp-final-score');
+  const playAgainBtn = root.querySelector('#kbp-play-again');
+  const comboEl = root.querySelector('#kbp-combo');
+  const SIZE=8, COLORS=['#a855f7','#2f72ff','#ffd22e','#ff9045','#42d86f','#ff4f77','#22d3ee'];
+  const SHAPES=[[[1]],[[1,1]],[[1],[1]],[[1,1,1]],[[1],[1],[1]],[[1,1],[1,1]],[[1,0],[1,1]],[[0,1],[1,1]],[[1,1],[1,0]],[[1,1],[0,1]],[[1,1,1],[0,1,0]],[[0,1,0],[1,1,1]],[[1,1,0],[0,1,1]],[[0,1,1],[1,1,0]],[[1,1,1,1]],[[1],[1],[1],[1]],[[1,1,1],[1,0,0]],[[1,1,1],[0,0,1]],[[1,0,0],[1,1,1]],[[0,0,1],[1,1,1]],[[1,1,1],[1,1,1]],[[1,1],[1,0],[1,0]],[[1,1],[0,1],[0,1]]];
+  const SPEEDS={1:1000,2:800,3:560,4:330,5:160};
+  let board,pieces,score,stars,gems,drag,history,particles=[],activeDrop=null,busy=false,raf=0;
+  const now=()=>performance.now(), rand=(a,b)=>a+Math.random()*(b-a), pick=a=>a[Math.floor(Math.random()*a.length)], cs=()=>canvas.width/SIZE;
+  function fitCanvas(){ const r=canvas.getBoundingClientRect(), dpr=Math.max(1,window.devicePixelRatio||1), w=Math.round(r.width*dpr), h=Math.round(r.height*dpr); if(canvas.width!==w||canvas.height!==h){canvas.width=w; canvas.height=h;} }
+  function currentSpeed(){return SPEEDS[levelEl.value]||SPEEDS[2];}
+  function updateSpeedLabel(){speedLabelEl.textContent=`One row every ${(currentSpeed()/1000).toFixed(2).replace(/0$/,'').replace(/\.$/,'')}s`;}
+  function cloneCell(c){return c?{...c}:null;}
+  function cloneState(){return {board:board.map(r=>r.map(cloneCell)), pieces:JSON.parse(JSON.stringify(pieces)), score, stars, gems};}
+  function restoreState(s){board=s.board.map(r=>r.map(cloneCell)); pieces=JSON.parse(JSON.stringify(s.pieces)); score=s.score;stars=s.stars;gems=s.gems; particles=[];activeDrop=null;busy=false;overlay.hidden=true; updateHud();renderPieces();draw();checkGameOver();}
+  function makePiece(){return {shape:pick(SHAPES), color:pick(COLORS), used:false};}
+  function newGame(){board=Array.from({length:SIZE},()=>Array(SIZE).fill(null)); pieces=[makePiece(),makePiece(),makePiece()]; score=0;stars=0;gems=0;drag=null;history=[];particles=[];activeDrop=null;busy=false;overlay.hidden=true;comboEl.hidden=true;updateSpeedLabel();updateHud();renderPieces();draw();checkGameOver();}
+  function updateHud(){scoreEl.textContent=score; starsEl.textContent=stars; gemsEl.textContent=gems; undoBtn.disabled=history.length===0||busy;}
+  function canPlace(piece,row,col){return piece.shape.every((sr,rr)=>sr.every((f,cc)=>!f||((row+rr)>=0&&(row+rr)<SIZE&&(col+cc)>=0&&(col+cc)<SIZE&&!board[row+rr][col+cc])));}
+  function renderPieces(){piecesEl.innerHTML=''; pieces.forEach((piece,idx)=>{const wrap=document.createElement('div'); wrap.className='kbp-piece'+(piece.used?' used':''); wrap.dataset.index=idx; const grid=document.createElement('div'); grid.className='kbp-mini-grid'; grid.style.gridTemplateColumns=`repeat(${piece.shape[0].length}, auto)`; grid.style.setProperty('--piece-color',piece.color); piece.shape.forEach(r=>r.forEach(v=>{const cell=document.createElement('div'); cell.className='kbp-mini-cell'+(v?'':' empty'); grid.appendChild(cell);})); wrap.appendChild(grid); wrap.addEventListener('pointerdown', startDrag); piecesEl.appendChild(wrap);});}
+  function boardPos(e,piece){const rect=canvas.getBoundingClientRect(), x=(e.clientX-rect.left)*(canvas.width/rect.width), y=(e.clientY-rect.top)*(canvas.height/rect.height), size=cs(); return {row:Math.round(y/size-piece.shape.length/2), col:Math.round(x/size-piece.shape[0].length/2)};}
+  function startDrag(e){if(busy)return; const idx=Number(e.currentTarget.dataset.index), piece=pieces[idx]; if(!piece||piece.used)return; drag={idx,piece,boardPos:null}; overlay.hidden=true; moveDrag(e);}
+  function moveDrag(e){if(!drag)return; drag.boardPos=boardPos(e, drag.piece); draw();}
+  function endDrag(){if(!drag)return; const d=drag; drag=null; if(!d.boardPos||!canPlace(d.piece,d.boardPos.row,d.boardPos.col)){draw(); return;} history.push(cloneState()); pieces[d.idx].used=true; score += d.piece.shape.flat().filter(Boolean).length*8; lockPiece(d.piece,d.boardPos.row,d.boardPos.col); if(pieces.every(p=>p.used)) pieces=[makePiece(),makePiece(),makePiece()]; updateHud();renderPieces();draw();checkGameOver();}
+  function lockPiece(piece,row,col){piece.shape.forEach((sr,rr)=>sr.forEach((f,cc)=>{if(f) board[row+rr][col+cc]={color:piece.color};})); clearLines();}
+  function clearLines(){const rows=[], cols=[]; for(let r=0;r<SIZE;r++) if(board[r].every(Boolean)) rows.push(r); for(let c=0;c<SIZE;c++){let full=true; for(let r=0;r<SIZE;r++) if(!board[r][c]) full=false; if(full) cols.push(c);} const clearSet=new Set(); rows.forEach(r=>{for(let c=0;c<SIZE;c++) clearSet.add(`${r},${c}`)}); cols.forEach(c=>{for(let r=0;r<SIZE;r++) clearSet.add(`${r},${c}`)}); clearSet.forEach(k=>{const [r,c]=k.split(',').map(Number); board[r][c]=null;}); if(clearSet.size){const lines=rows.length+cols.length; score += lines*160 + Math.max(0,lines-1)*120 + clearSet.size*6; comboEl.textContent=lines>=3?'BOOM!':'CLEAR!'; comboEl.hidden=false; setTimeout(()=>comboEl.hidden=true,900);} }
+  function hasAnyMove(){return pieces.some(p=>!p.used && (()=>{for(let r=0;r<SIZE;r++)for(let c=0;c<SIZE;c++) if(canPlace(p,r,c)) return true; return false;})());}
+  function checkGameOver(){if(busy||pieces.every(p=>p.used)) return; if(!hasAnyMove()){finalScoreEl.textContent=`Score: ${score}`; overlay.hidden=false;}}
+  function draw(){fitCanvas(); const size=cs(); ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#1b2958'; ctx.fillRect(0,0,canvas.width,canvas.height); for(let r=0;r<SIZE;r++) for(let c=0;c<SIZE;c++){ ctx.fillStyle=(r+c)%2?'rgba(255,255,255,.03)':'rgba(255,255,255,.06)'; ctx.fillRect(c*size+2,r*size+2,size-4,size-4); if(board[r][c]){ctx.fillStyle=board[r][c].color; ctx.fillRect(c*size+6,r*size+6,size-12,size-12);} } if(drag&&drag.boardPos){ drag.piece.shape.forEach((sr,rr)=>sr.forEach((f,cc)=>{if(!f)return; const r=drag.boardPos.row+rr,c=drag.boardPos.col+cc; if(r<0||c<0||r>=SIZE||c>=SIZE)return; ctx.globalAlpha=0.5; ctx.fillStyle=canPlace(drag.piece,drag.boardPos.row,drag.boardPos.col)?drag.piece.color:'#ff3b5f'; ctx.fillRect(c*size+8,r*size+8,size-16,size-16); ctx.globalAlpha=1; })); }}
+  window.addEventListener('pointermove', moveDrag,{passive:true}); window.addEventListener('pointerup', endDrag); window.addEventListener('pointercancel', endDrag); window.addEventListener('resize', draw); levelEl.addEventListener('change', updateSpeedLabel);
+  undoBtn.addEventListener('click',()=>{if(busy)return; const last=history.pop(); if(last) restoreState(last);});
+  newGameBtn.addEventListener('click', newGame); playAgainBtn.addEventListener('click', newGame); newGame();
+})();
+</script>
+
 </body>
 </html>

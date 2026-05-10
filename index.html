@@ -3,285 +3,509 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Block Puzzle</title>
+  <title>Block Bloom</title>
   <style>
-    body { font-family: Arial, sans-serif; background: #111827; color: #f9fafb; margin: 0; padding: 16px; }
-    .wrap { max-width: 980px; margin: 0 auto; }
-    .hud { display: flex; gap: 16px; align-items: center; margin-bottom: 12px; }
-    .pill { background: #1f2937; padding: 8px 12px; border-radius: 8px; }
-    button { background: #2563eb; color: #fff; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
-    .layout { display: grid; grid-template-columns: 420px 1fr; gap: 20px; }
-    canvas { background: #0b1220; border: 1px solid #334155; border-radius: 8px; }
-    .tray { display: flex; gap: 8px; margin-top: 12px; }
-    .slot { width: 120px; height: 120px; display: grid; place-items: center; background: #1f2937; border-radius: 8px; border: 2px solid transparent; }
-    .slot.selected { border-color: #60a5fa; }
-    .small { font-size: 12px; color: #cbd5e1; }
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --danger: #ef4444;
+      --cell: 42;
+      --board-size: 10;
+      --board-px: calc(var(--cell) * var(--board-size));
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 55%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    #ktvh-block-puzzle {
+      max-width: 1220px;
+      margin: 0 auto;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid #334155;
+      border-radius: 18px;
+      padding: 20px;
+      backdrop-filter: blur(6px);
+      position: relative;
+    }
+
+    .kbp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    .kbp-title { margin: 0; font-size: 1.6rem; letter-spacing: 0.4px; }
+    .kbp-sub { color: var(--muted); font-size: 0.9rem; margin-top: 2px; }
+
+    .kbp-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .pill {
+      background: var(--panel-2);
+      border: 1px solid #374151;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 0.92rem;
+    }
+
+    select, button {
+      border: 1px solid #475569;
+      border-radius: 10px;
+      background: #0b1220;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    button:hover, select:hover { border-color: #64748b; }
+
+    .kbp-layout {
+      display: grid;
+      grid-template-columns: 1fr 330px;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .kbp-board-wrap {
+      background: #0b1220;
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #kbp-board {
+      width: 100%;
+      max-width: 760px;
+      aspect-ratio: 1/1;
+      display: block;
+      margin: 0 auto;
+      background: #090f1c;
+      border-radius: 10px;
+      border: 1px solid #1e293b;
+      touch-action: none;
+    }
+
+    .kbp-side {
+      background: var(--panel);
+      border: 1px solid #334155;
+      border-radius: 14px;
+      padding: 12px;
+    }
+
+    .kbp-side h3 { margin: 6px 0 10px; font-size: 1rem; }
+    .kbp-tray {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+      min-height: 300px;
+    }
+
+    .kbp-piece {
+      background: #0b1220;
+      border: 2px solid #334155;
+      border-radius: 12px;
+      min-height: 92px;
+      display: grid;
+      place-items: center;
+      cursor: grab;
+      user-select: none;
+    }
+    .kbp-piece.dragging { opacity: 0.35; border-color: var(--accent); }
+
+    .kbp-overlay {
+      position: absolute;
+      inset: 14px;
+      background: rgba(2, 6, 23, 0.72);
+      display: none;
+      place-items: center;
+      border-radius: 10px;
+      z-index: 5;
+      text-align: center;
+      padding: 20px;
+    }
+    .kbp-overlay.show { display: grid; }
+    .kbp-overlay-card {
+      background: #0f172a;
+      border: 1px solid #475569;
+      border-radius: 12px;
+      padding: 18px;
+      max-width: 300px;
+    }
+
+    @media (max-width: 900px) {
+      body { padding: 12px; }
+      :root { --cell: 34; }
+      .kbp-layout { grid-template-columns: 1fr; }
+      .kbp-tray { grid-template-columns: repeat(3, 1fr); min-height: 0; }
+      .kbp-piece { min-height: 80px; }
+      .kbp-controls { width: 100%; }
+    }
   </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="hud">
-    <div class="pill">Score: <strong id="score">0</strong></div>
-    <div class="pill">Combo: <strong id="combo">0</strong></div>
-    <div class="pill" id="status">Playing</div>
-    <button id="resetBtn" type="button">Reset</button>
-  </div>
-  <div class="layout">
-    <canvas id="board" width="420" height="420"></canvas>
-    <div>
-      <h3>Pieces</h3>
-      <div class="tray" id="tray"></div>
-      <p class="small">Select a piece (1-3 or click), then click board cell to place.</p>
+  <section id="ktvh-block-puzzle">
+    <div class="kbp-header">
+      <div>
+        <h1 class="kbp-title">Block Bloom</h1>
+        <div class="kbp-sub">Drag a shape to the board. Clear rows/columns to bloom fireworks.</div>
+      </div>
+      <div class="kbp-controls">
+        <div class="pill">Score: <strong id="kbp-score">0</strong></div>
+        <label class="pill">Level
+          <select id="kbp-level" aria-label="Level selector">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <button id="kbp-undo" type="button">Undo</button>
+        <button id="kbp-reset" type="button">Reset</button>
+      </div>
     </div>
-  </div>
-</div>
 
-<script>
-(() => {
-  const CFG = Object.freeze({ boardSize: 10, cell: 40, pad: 10, dropMs: 150 });
+    <div class="kbp-layout">
+      <div class="kbp-board-wrap">
+        <canvas id="kbp-board" width="700" height="700" aria-label="Block Bloom board"></canvas>
+        <div id="kbp-over" class="kbp-overlay" role="dialog" aria-live="polite">
+          <div class="kbp-overlay-card">
+            <h2>Game Over</h2>
+            <p id="kbp-over-text">No valid placements remain.</p>
+            <button id="kbp-restart" type="button">Play Again</button>
+          </div>
+        </div>
+      </div>
 
-  // ----- state init/reset -----
-  const state = createInitialState();
-  const ui = bindUi();
-  wireInputHandlers(ui, state);
-  resetGame(state, ui);
-  renderAll(ui, state);
+      <aside class="kbp-side">
+        <h3>Pieces</h3>
+        <div id="kbp-tray" class="kbp-tray"></div>
+      </aside>
+    </div>
+  </section>
 
-  function createInitialState() {
-    return {
-      grid: [],
-      pieces: [],
-      selectedPieceId: null,
-      score: 0,
-      combo: 0,
-      gameOver: false,
-      animating: false,
-      pendingLock: null
-    };
-  }
+  <script>
+    (() => {
+      const SIZE = 10;
+      const COLORS = ["#22d3ee", "#34d399", "#f59e0b", "#f87171", "#a78bfa", "#60a5fa"];
+      const SHAPES = [
+        [[0,0]], [[0,0],[1,0]], [[0,0],[0,1]], [[0,0],[1,0],[2,0]], [[0,0],[0,1],[0,2]],
+        [[0,0],[1,0],[0,1]], [[0,0],[1,0],[1,1]], [[0,0],[1,0],[2,0],[1,1]], [[0,0],[1,0],[0,1],[1,1]]
+      ];
 
-  function resetGame(s, uiRefs) {
-    s.grid = Array.from({ length: CFG.boardSize }, () => Array(CFG.boardSize).fill(0));
-    s.pieces = spawnPieceSet();
-    s.selectedPieceId = s.pieces[0]?.id ?? null;
-    s.score = 0;
-    s.combo = 0;
-    s.gameOver = false;
-    s.animating = false;
-    s.pendingLock = null;
-    renderAll(uiRefs, s);
-  }
+      const state = {
+        board: [],
+        pieces: [],
+        selectedDragId: null,
+        score: 0,
+        level: 3,
+        gameOver: false,
+        animating: false,
+        particles: [],
+        undoStack: []
+      };
 
-  // ----- input handling -----
-  function bindUi() {
-    return {
-      board: document.getElementById('board'),
-      tray: document.getElementById('tray'),
-      score: document.getElementById('score'),
-      combo: document.getElementById('combo'),
-      status: document.getElementById('status'),
-      resetBtn: document.getElementById('resetBtn')
-    };
-  }
+      const ui = {
+        board: document.getElementById("kbp-board"),
+        tray: document.getElementById("kbp-tray"),
+        score: document.getElementById("kbp-score"),
+        level: document.getElementById("kbp-level"),
+        undo: document.getElementById("kbp-undo"),
+        reset: document.getElementById("kbp-reset"),
+        overlay: document.getElementById("kbp-over"),
+        overText: document.getElementById("kbp-over-text"),
+        restart: document.getElementById("kbp-restart")
+      };
 
-  function wireInputHandlers(uiRefs, s) {
-    uiRefs.resetBtn.addEventListener('click', () => resetGame(s, uiRefs));
-    uiRefs.board.addEventListener('click', (ev) => onBoardClick(ev, uiRefs, s));
-    document.addEventListener('keydown', (ev) => onKeyDown(ev, uiRefs, s));
-    uiRefs.tray.addEventListener('click', (ev) => onTrayClick(ev, uiRefs, s));
-  }
+      const ctx = ui.board.getContext("2d");
 
-  function onKeyDown(ev, uiRefs, s) {
-    if (s.gameOver || s.animating) return;
-    if (!['1','2','3'].includes(ev.key)) return;
-    const idx = Number(ev.key) - 1;
-    if (s.pieces[idx]) {
-      s.selectedPieceId = s.pieces[idx].id;
-      renderAll(uiRefs, s);
-    }
-  }
+      function deepCloneBoard(board) { return board.map(r => [...r]); }
+      function speedForLevel(level) { return [0, 280, 220, 170, 130, 95][level]; }
 
-  function onTrayClick(ev, uiRefs, s) {
-    if (s.gameOver || s.animating) return;
-    const slot = ev.target.closest('[data-piece-id]');
-    if (!slot) return;
-    s.selectedPieceId = slot.dataset.pieceId;
-    renderAll(uiRefs, s);
-  }
-
-  function onBoardClick(ev, uiRefs, s) {
-    if (s.gameOver || s.animating || !s.selectedPieceId) return;
-    const { col, row } = eventToCell(ev, uiRefs.board);
-    const piece = s.pieces.find(p => p.id === s.selectedPieceId);
-    if (!piece) return;
-    if (!canPlacePiece(s.grid, piece, col, row)) return;
-    startDropAnimator(uiRefs, s, piece, col, row);
-  }
-
-  // ----- placement validation -----
-  function canPlacePiece(grid, piece, baseCol, baseRow) {
-    return piece.cells.every(([dx, dy]) => {
-      const x = baseCol + dx;
-      const y = baseRow + dy;
-      return x >= 0 && x < CFG.boardSize && y >= 0 && y < CFG.boardSize && grid[y][x] === 0;
-    });
-  }
-
-  // ----- drop animator -----
-  function startDropAnimator(uiRefs, s, piece, col, row) {
-    s.animating = true;
-    s.pendingLock = { piece, col, row, t0: performance.now() };
-    const tick = (now) => {
-      if (!s.pendingLock) return;
-      const p = Math.min(1, (now - s.pendingLock.t0) / CFG.dropMs);
-      renderAll(uiRefs, s, p);
-      if (p < 1) {
-        requestAnimationFrame(tick);
-        return;
+      function initGame() {
+        state.board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+        state.pieces = spawnPieces();
+        state.selectedDragId = null;
+        state.score = 0;
+        state.gameOver = false;
+        state.animating = false;
+        state.particles = [];
+        state.undoStack = [];
+        updateHud();
+        renderTray();
+        renderFrame();
+        syncGameOver();
       }
-      finishLockAndResolve(uiRefs, s);
-    };
-    requestAnimationFrame(tick);
-  }
 
-  // ----- lock and clear resolver -----
-  function finishLockAndResolve(uiRefs, s) {
-    const { piece, col, row } = s.pendingLock;
-    lockPiece(s.grid, piece, col, row);
-    s.pieces = s.pieces.filter(p => p.id !== piece.id);
-    const cleared = clearLines(s.grid);
-    applyScoringAndCombo(s, piece.cells.length, cleared);
-    if (s.pieces.length === 0) {
-      s.pieces = spawnPieceSet();
-      s.selectedPieceId = s.pieces[0]?.id ?? null;
-    }
-    s.pendingLock = null;
-    s.animating = false;
-    resolveGameOver(s);
-    renderAll(uiRefs, s);
-  }
+      function spawnPieces() {
+        return Array.from({ length: 3 }, () => {
+          const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+          return { id: crypto.randomUUID(), cells: shape, color: COLORS[Math.floor(Math.random() * COLORS.length)] };
+        });
+      }
 
-  function lockPiece(grid, piece, baseCol, baseRow) {
-    for (const [dx, dy] of piece.cells) grid[baseRow + dy][baseCol + dx] = piece.color;
-  }
+      function updateHud() {
+        ui.score.textContent = String(Math.floor(state.score));
+        ui.overlay.classList.toggle("show", state.gameOver);
+      }
 
-  function clearLines(grid) {
-    const fullRows = [];
-    const fullCols = [];
-    for (let y = 0; y < CFG.boardSize; y++) if (grid[y].every(Boolean)) fullRows.push(y);
-    for (let x = 0; x < CFG.boardSize; x++) {
-      let ok = true;
-      for (let y = 0; y < CFG.boardSize; y++) if (!grid[y][x]) ok = false;
-      if (ok) fullCols.push(x);
-    }
-    for (const y of fullRows) for (let x = 0; x < CFG.boardSize; x++) grid[y][x] = 0;
-    for (const x of fullCols) for (let y = 0; y < CFG.boardSize; y++) grid[y][x] = 0;
-    return fullRows.length + fullCols.length;
-  }
+      function renderTray() {
+        ui.tray.innerHTML = "";
+        for (const piece of state.pieces) {
+          const el = document.createElement("div");
+          el.className = "kbp-piece";
+          el.draggable = !state.gameOver && !state.animating;
+          el.dataset.pieceId = piece.id;
+          el.innerHTML = pieceSvg(piece);
+          el.addEventListener("dragstart", onPieceDragStart);
+          el.addEventListener("dragend", onPieceDragEnd);
+          ui.tray.appendChild(el);
+        }
+      }
 
-  // ----- scoring/combo -----
-  function applyScoringAndCombo(s, placedCells, clearedLines) {
-    s.score += placedCells * 10;
-    if (clearedLines > 0) {
-      s.combo += 1;
-      s.score += clearedLines * 100 * (1 + s.combo * 0.25);
-    } else {
-      s.combo = 0;
-    }
-  }
+      function pieceSvg(piece) {
+        const cs = 18;
+        const maxX = Math.max(...piece.cells.map(c => c[0]));
+        const maxY = Math.max(...piece.cells.map(c => c[1]));
+        const w = (maxX + 1) * cs + 8;
+        const h = (maxY + 1) * cs + 8;
+        const rects = piece.cells.map(([x, y]) => `<rect x="${x * cs + 4}" y="${y * cs + 4}" width="${cs - 4}" height="${cs - 4}" rx="3" fill="${piece.color}"/>`).join("");
+        return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${rects}</svg>`;
+      }
 
-  // ----- game-over detection -----
-  function resolveGameOver(s) {
-    if (!s.pieces.some(piece => anyPlacementExists(s.grid, piece))) s.gameOver = true;
-  }
+      function onPieceDragStart(e) {
+        if (state.animating || state.gameOver) { e.preventDefault(); return; }
+        const id = e.currentTarget.dataset.pieceId;
+        state.selectedDragId = id;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", id);
+        e.currentTarget.classList.add("dragging");
+      }
 
-  function anyPlacementExists(grid, piece) {
-    for (let y = 0; y < CFG.boardSize; y++) {
-      for (let x = 0; x < CFG.boardSize; x++) if (canPlacePiece(grid, piece, x, y)) return true;
-    }
-    return false;
-  }
+      function onPieceDragEnd(e) {
+        e.currentTarget.classList.remove("dragging");
+        state.selectedDragId = null;
+      }
 
-  // ----- rendering -----
-  function renderAll(uiRefs, s, animProgress = null) {
-    renderHud(uiRefs, s);
-    renderBoard(uiRefs.board, s, animProgress);
-    renderTray(uiRefs.tray, s);
-  }
+      ui.board.addEventListener("dragover", (e) => {
+        if (!state.selectedDragId || state.animating || state.gameOver) return;
+        e.preventDefault();
+      });
 
-  function renderHud(uiRefs, s) {
-    uiRefs.score.textContent = Math.floor(s.score);
-    uiRefs.combo.textContent = s.combo;
-    uiRefs.status.textContent = s.gameOver ? 'Game Over' : (s.animating ? 'Dropping...' : 'Playing');
-  }
+      ui.board.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (!state.selectedDragId || state.animating || state.gameOver) return;
+        const piece = state.pieces.find(p => p.id === state.selectedDragId);
+        if (!piece) return;
+        const { col, row } = toCell(e.clientX, e.clientY);
+        if (!canPlace(piece, col, row, state.board)) return;
+        beginDrop(piece, col, row);
+      });
 
-  function renderBoard(canvas, s, animProgress) {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawGrid(ctx);
-    for (let y = 0; y < CFG.boardSize; y++) {
-      for (let x = 0; x < CFG.boardSize; x++) if (s.grid[y][x]) drawCell(ctx, x, y, s.grid[y][x]);
-    }
-    if (s.pendingLock && animProgress !== null) {
-      const { piece, col, row } = s.pendingLock;
-      const yOffset = (1 - animProgress) * CFG.cell * 1.5;
-      piece.cells.forEach(([dx, dy]) => drawCell(ctx, col + dx, row + dy, piece.color, yOffset));
-    }
-  }
+      ui.level.addEventListener("change", () => { state.level = Number(ui.level.value); });
+      ui.undo.addEventListener("click", undoMove);
+      ui.reset.addEventListener("click", initGame);
+      ui.restart.addEventListener("click", initGame);
 
-  function renderTray(tray, s) {
-    tray.innerHTML = '';
-    for (const p of s.pieces) {
-      const el = document.createElement('button');
-      el.type = 'button';
-      el.className = 'slot' + (p.id === s.selectedPieceId ? ' selected' : '');
-      el.dataset.pieceId = p.id;
-      el.innerHTML = miniSvg(p.cells, p.color);
-      tray.appendChild(el);
-    }
-  }
+      function toCell(clientX, clientY) {
+        const rect = ui.board.getBoundingClientRect();
+        const scaleX = ui.board.width / rect.width;
+        const scaleY = ui.board.height / rect.height;
+        const x = (clientX - rect.left) * scaleX;
+        const y = (clientY - rect.top) * scaleY;
+        const cell = ui.board.width / SIZE;
+        return { col: Math.floor(x / cell), row: Math.floor(y / cell) };
+      }
 
-  function drawGrid(ctx) {
-    for (let i = 0; i <= CFG.boardSize; i++) {
-      const px = CFG.pad + i * CFG.cell;
-      ctx.strokeStyle = '#334155';
-      ctx.beginPath(); ctx.moveTo(CFG.pad, px); ctx.lineTo(CFG.pad + CFG.boardSize * CFG.cell, px); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px, CFG.pad); ctx.lineTo(px, CFG.pad + CFG.boardSize * CFG.cell); ctx.stroke();
-    }
-  }
+      function canPlace(piece, baseCol, baseRow, board) {
+        return piece.cells.every(([dx, dy]) => {
+          const x = baseCol + dx, y = baseRow + dy;
+          return x >= 0 && x < SIZE && y >= 0 && y < SIZE && !board[y][x];
+        });
+      }
 
-  function drawCell(ctx, x, y, color, yOffset = 0) {
-    const px = CFG.pad + x * CFG.cell + 2;
-    const py = CFG.pad + y * CFG.cell + 2 - yOffset;
-    ctx.fillStyle = color;
-    ctx.fillRect(px, py, CFG.cell - 4, CFG.cell - 4);
-  }
+      function beginDrop(piece, col, row) {
+        const startBoard = deepCloneBoard(state.board);
+        const startPieces = state.pieces.map(p => ({ ...p, cells: p.cells.map(c => [...c]) }));
+        const startScore = state.score;
+        state.undoStack.push({ board: startBoard, pieces: startPieces, score: startScore, level: state.level });
 
-  function eventToCell(ev, canvas) {
-    const r = canvas.getBoundingClientRect();
-    const x = Math.floor((ev.clientX - r.left - CFG.pad) / CFG.cell);
-    const y = Math.floor((ev.clientY - r.top - CFG.pad) / CFG.cell);
-    return { col: x, row: y };
-  }
+        state.animating = true;
+        animateDropWholePiece(piece, col, row, () => {
+          lockPiece(piece, col, row);
+          state.pieces = state.pieces.filter(p => p.id !== piece.id);
+          state.score += piece.cells.length * 10;
+          const cleared = clearLines();
+          if (cleared.length) {
+            state.score += cleared.length * 120;
+            spawnFireworks(cleared);
+          }
+          if (state.pieces.length === 0) state.pieces = spawnPieces();
+          state.animating = false;
+          renderTray();
+          updateHud();
+          syncGameOver();
+          renderFrame();
+        });
+      }
 
-  function spawnPieceSet() {
-    return Array.from({ length: 3 }, () => randomPiece());
-  }
+      function animateDropWholePiece(piece, col, row, done) {
+        const cellPx = ui.board.width / SIZE;
+        const targetY = row * cellPx;
+        const startY = -cellPx * 2;
+        const speed = speedForLevel(state.level);
+        const started = performance.now();
 
-  function randomPiece() {
-    const shapes = [
-      [[0,0]], [[0,0],[1,0]], [[0,0],[0,1]], [[0,0],[1,0],[0,1]], [[0,0],[1,0],[2,0]], [[0,0],[0,1],[0,2]], [[0,0],[1,0],[0,1],[1,1]]
-    ];
-    const palette = ['#22d3ee','#f59e0b','#34d399','#f87171','#a78bfa'];
-    return { id: crypto.randomUUID(), cells: shapes[Math.floor(Math.random() * shapes.length)], color: palette[Math.floor(Math.random() * palette.length)] };
-  }
+        function tick(now) {
+          const t = Math.min(1, (now - started) / speed);
+          const offsetY = startY + (targetY - startY) * t;
+          renderFrame({ piece, col, row, offsetY });
+          if (t < 1) {
+            requestAnimationFrame(tick);
+          } else {
+            done();
+          }
+        }
+        requestAnimationFrame(tick);
+      }
 
-  function miniSvg(cells, color) {
-    const s = 24;
-    const blocks = cells.map(([x, y]) => `<rect x="${x*s+4}" y="${y*s+4}" width="${s-6}" height="${s-6}" fill="${color}"/>`).join('');
-    return `<svg width="100" height="100" viewBox="0 0 100 100" aria-hidden="true">${blocks}</svg>`;
-  }
-})();
-</script>
+      function lockPiece(piece, col, row) {
+        for (const [dx, dy] of piece.cells) {
+          state.board[row + dy][col + dx] = piece.color;
+        }
+      }
+
+      function clearLines() {
+        const clearedRows = [];
+        const clearedCols = [];
+        for (let y = 0; y < SIZE; y++) if (state.board[y].every(Boolean)) clearedRows.push(y);
+        for (let x = 0; x < SIZE; x++) {
+          let full = true;
+          for (let y = 0; y < SIZE; y++) if (!state.board[y][x]) full = false;
+          if (full) clearedCols.push(x);
+        }
+        for (const y of clearedRows) for (let x = 0; x < SIZE; x++) state.board[y][x] = null;
+        for (const x of clearedCols) for (let y = 0; y < SIZE; y++) state.board[y][x] = null;
+        return [...clearedRows.map(r => ({ type: "row", i: r })), ...clearedCols.map(c => ({ type: "col", i: c }))];
+      }
+
+      function spawnFireworks(lines) {
+        const cell = ui.board.width / SIZE;
+        for (const line of lines) {
+          for (let i = 0; i < 28; i++) {
+            const baseX = line.type === "row" ? (Math.random() * SIZE + 0.5) * cell : (line.i + 0.5) * cell;
+            const baseY = line.type === "col" ? (Math.random() * SIZE + 0.5) * cell : (line.i + 0.5) * cell;
+            const a = Math.random() * Math.PI * 2;
+            const sp = 0.5 + Math.random() * 2.4;
+            state.particles.push({ x: baseX, y: baseY, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 40 + Math.random() * 24, color: COLORS[Math.floor(Math.random() * COLORS.length)] });
+          }
+        }
+      }
+
+      function stepParticles() {
+        for (const p of state.particles) {
+          p.x += p.vx; p.y += p.vy; p.vy += 0.04; p.life -= 1;
+        }
+        state.particles = state.particles.filter(p => p.life > 0);
+      }
+
+      function drawParticles() {
+        for (const p of state.particles) {
+          ctx.globalAlpha = Math.max(0, p.life / 64);
+          ctx.fillStyle = p.color;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 2.1, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function anyPlacementExists() {
+        return state.pieces.some(piece => {
+          for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) if (canPlace(piece, x, y, state.board)) return true;
+          return false;
+        });
+      }
+
+      function syncGameOver() {
+        state.gameOver = !anyPlacementExists();
+        if (state.gameOver) ui.overText.textContent = `No valid placements remain. Final score: ${Math.floor(state.score)}`;
+        updateHud();
+      }
+
+      function undoMove() {
+        if (state.animating || !state.undoStack.length) return;
+        const prev = state.undoStack.pop();
+        state.board = deepCloneBoard(prev.board);
+        state.pieces = prev.pieces.map(p => ({ ...p, cells: p.cells.map(c => [...c]) }));
+        state.score = prev.score;
+        state.level = prev.level;
+        ui.level.value = String(state.level);
+        state.gameOver = false;
+        renderTray();
+        updateHud();
+        syncGameOver();
+        renderFrame();
+      }
+
+      function drawGrid() {
+        const w = ui.board.width;
+        const cell = w / SIZE;
+        ctx.strokeStyle = "#243146";
+        for (let i = 0; i <= SIZE; i++) {
+          const p = i * cell;
+          ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(w, p); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, w); ctx.stroke();
+        }
+      }
+
+      function drawCell(x, y, color, offsetY = 0) {
+        const cell = ui.board.width / SIZE;
+        const pad = 3;
+        ctx.fillStyle = color;
+        ctx.fillRect(x * cell + pad, y * cell + pad + offsetY, cell - pad * 2, cell - pad * 2);
+      }
+
+      function renderFrame(falling = null) {
+        ctx.clearRect(0, 0, ui.board.width, ui.board.height);
+        drawGrid();
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const v = state.board[y][x];
+            if (v) drawCell(x, y, v);
+          }
+        }
+        if (falling) {
+          for (const [dx, dy] of falling.piece.cells) {
+            drawCell(falling.col + dx, falling.row + dy, falling.piece.color, falling.offsetY - falling.row * (ui.board.width / SIZE));
+          }
+        }
+        stepParticles();
+        drawParticles();
+      }
+
+      function gameLoop() {
+        if (!state.animating && state.particles.length) renderFrame();
+        requestAnimationFrame(gameLoop);
+      }
+
+      initGame();
+      gameLoop();
+    })();
+  </script>
 </body>
 </html>

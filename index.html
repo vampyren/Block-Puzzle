@@ -3,6 +3,331 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Block Puzzle</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; background: #101622; color: #eef3ff; }
+    .wrap { display: grid; gap: 12px; max-width: 980px; margin: 0 auto; }
+    .controls { display: flex; align-items: center; gap: 12px; }
+    canvas { background: #162035; border: 1px solid #2f3f62; border-radius: 10px; touch-action: none; }
+    .hint { color: #b9c7ea; font-size: 14px; }
+    button { padding: 8px 12px; border-radius: 6px; border: none; background: #4d7eff; color: white; cursor: pointer; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="controls">
+    <label for="level">Level speed:</label>
+    <select id="level">
+      <option value="450">Level 1 (slow)</option>
+      <option value="320" selected>Level 2</option>
+      <option value="220">Level 3</option>
+      <option value="150">Level 4 (fast)</option>
+    </select>
+    <div>Score: <span id="score">0</span></div>
+    <button id="reset">Reset</button>
+  </div>
+  <canvas id="game" width="700" height="620"></canvas>
+  <div class="hint">Drag a piece from the tray to the board. During animated drop, input is locked.</div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const levelSelector = document.getElementById('level');
+  const scoreNode = document.getElementById('score');
+
+  const boardRows = 10;
+  const boardCols = 10;
+  const cellSize = 40;
+  const boardX = 20;
+  const boardY = 20;
+  const trayY = boardY + boardRows * cellSize + 38;
+
+  let board = Array.from({ length: boardRows }, () => Array(boardCols).fill(0));
+  let score = 0;
+  let busy = false;
+
+  let pieces = [];
+  let dragState = null;
+  let activeDrop = null;
+
+  const colors = ['#5edfff', '#fdbf50', '#7df76f', '#d38fff', '#ff7b8a'];
+
+  const SHAPES = [
+    [[0,0]],
+    [[0,0],[1,0]],
+    [[0,0],[0,1]],
+    [[0,0],[1,0],[0,1]],
+    [[0,0],[1,0],[2,0]],
+    [[0,0],[0,1],[1,1]],
+    [[0,0],[1,0],[0,1],[1,1]],
+    [[0,0],[1,0],[2,0],[1,1]],
+  ];
+
+  function randomPiece() {
+    const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)].map(([x,y]) => [x,y]);
+    return {
+      shape,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      x: 0,
+      y: trayY,
+      inTray: true,
+    };
+  }
+
+  function buildTray() {
+    pieces = [randomPiece(), randomPiece(), randomPiece()];
+    let x = boardX;
+    for (const p of pieces) {
+      p.x = x;
+      x += 170;
+    }
+  }
+
+  function updateScore(v) {
+    score = v;
+    scoreNode.textContent = String(score);
+  }
+
+  function shapeBounds(shape) {
+    const xs = shape.map(s => s[0]);
+    const ys = shape.map(s => s[1]);
+    return {
+      minX: Math.min(...xs),
+      maxX: Math.max(...xs),
+      minY: Math.min(...ys),
+      maxY: Math.max(...ys),
+    };
+  }
+
+  function drawBoard() {
+    ctx.fillStyle = '#1d2942';
+    ctx.fillRect(boardX, boardY, boardCols * cellSize, boardRows * cellSize);
+    for (let r = 0; r < boardRows; r++) {
+      for (let c = 0; c < boardCols; c++) {
+        ctx.strokeStyle = '#2f3f62';
+        ctx.strokeRect(boardX + c * cellSize, boardY + r * cellSize, cellSize, cellSize);
+        if (board[r][c]) {
+          ctx.fillStyle = board[r][c];
+          ctx.fillRect(boardX + c * cellSize + 3, boardY + r * cellSize + 3, cellSize - 6, cellSize - 6);
+        }
+      }
+    }
+  }
+
+  function drawPieceAtGrid(piece, row, col, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = piece.color;
+    for (const [dx, dy] of piece.shape) {
+      const rr = row + dy;
+      const cc = col + dx;
+      ctx.fillRect(boardX + cc * cellSize + 3, boardY + rr * cellSize + 3, cellSize - 6, cellSize - 6);
+    }
+    ctx.restore();
+  }
+
+  function drawTrayAndDragged() {
+    for (const p of pieces) {
+      if (!p.inTray) continue;
+      const bounds = shapeBounds(p.shape);
+      for (const [dx, dy] of p.shape) {
+        const x = p.x + (dx - bounds.minX) * cellSize;
+        const y = p.y + (dy - bounds.minY) * cellSize;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(x + 3, y + 3, cellSize - 6, cellSize - 6);
+        ctx.strokeStyle = '#223357';
+        ctx.strokeRect(x + 3, y + 3, cellSize - 6, cellSize - 6);
+      }
+    }
+
+    if (dragState && dragState.piece) {
+      const p = dragState.piece;
+      for (const [dx, dy] of p.shape) {
+        const x = dragState.dragX + dx * cellSize;
+        const y = dragState.dragY + dy * cellSize;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(x + 3, y + 3, cellSize - 6, cellSize - 6);
+      }
+    }
+  }
+
+  function drawActiveDrop() {
+    if (!activeDrop) return;
+    drawPieceAtGrid(activeDrop.piece, activeDrop.currentRow, activeDrop.col, 0.95);
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBoard();
+    drawTrayAndDragged();
+    drawActiveDrop();
+  }
+
+  function cellFromPixel(x, y) {
+    return {
+      col: Math.floor((x - boardX) / cellSize),
+      row: Math.floor((y - boardY) / cellSize),
+    };
+  }
+
+  function canPlace(piece, row, col) {
+    for (const [dx, dy] of piece.shape) {
+      const rr = row + dy;
+      const cc = col + dx;
+      if (rr < 0 || cc < 0 || rr >= boardRows || cc >= boardCols) return false;
+      if (board[rr][cc]) return false;
+    }
+    return true;
+  }
+
+  function clearLinesAndScore() {
+    let clearedRows = 0;
+    let clearedCols = 0;
+
+    for (let r = 0; r < boardRows; r++) {
+      if (board[r].every(Boolean)) {
+        for (let c = 0; c < boardCols; c++) board[r][c] = 0;
+        clearedRows++;
+      }
+    }
+
+    for (let c = 0; c < boardCols; c++) {
+      let full = true;
+      for (let r = 0; r < boardRows; r++) {
+        if (!board[r][c]) { full = false; break; }
+      }
+      if (full) {
+        for (let r = 0; r < boardRows; r++) board[r][c] = 0;
+        clearedCols++;
+      }
+    }
+
+    const bonus = (clearedRows + clearedCols) * 100;
+    if (bonus > 0) updateScore(score + bonus);
+  }
+
+  function lockPieceAtomic(piece, row, col) {
+    for (const [dx, dy] of piece.shape) {
+      board[row + dy][col + dx] = piece.color;
+    }
+    updateScore(score + piece.shape.length * 10);
+    clearLinesAndScore();
+  }
+
+  function startDropAnimation(piece, targetRow, col) {
+    const minDy = Math.min(...piece.shape.map(([,dy]) => dy));
+    const startAboveBoard = -1 - minDy;
+
+    activeDrop = {
+      piece,
+      targetRow,
+      col,
+      currentRow: startAboveBoard,
+      rowIntervalMs: Number(levelSelector.value),
+      lastTickAt: performance.now(),
+    };
+
+    busy = true;
+    stepDrop();
+  }
+
+  function stepDrop() {
+    if (!activeDrop) return;
+    const now = performance.now();
+
+    if (now - activeDrop.lastTickAt >= activeDrop.rowIntervalMs) {
+      activeDrop.lastTickAt = now;
+      if (activeDrop.currentRow < activeDrop.targetRow) {
+        activeDrop.currentRow += 1;
+      }
+    }
+
+    render();
+
+    if (activeDrop.currentRow === activeDrop.targetRow) {
+      lockPieceAtomic(activeDrop.piece, activeDrop.targetRow, activeDrop.col);
+      const donePiece = activeDrop.piece;
+      activeDrop = null;
+      busy = false;
+      donePiece.inTray = false;
+      if (pieces.every(p => !p.inTray)) buildTray();
+      render();
+      return;
+    }
+
+    setTimeout(stepDrop, 8);
+  }
+
+  function pickPiece(px, py) {
+    for (let i = pieces.length - 1; i >= 0; i--) {
+      const p = pieces[i];
+      if (!p.inTray) continue;
+      const b = shapeBounds(p.shape);
+      const w = (b.maxX - b.minX + 1) * cellSize;
+      const h = (b.maxY - b.minY + 1) * cellSize;
+      if (px >= p.x && px <= p.x + w && py >= p.y && py <= p.y + h) return p;
+    }
+    return null;
+  }
+
+  function pointerPos(ev) {
+    const rect = canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  }
+
+  function beginDrag(ev) {
+    if (busy) return;
+    const {x, y} = pointerPos(ev);
+    const piece = pickPiece(x, y);
+    if (!piece) return;
+    dragState = { piece, offsetX: x - piece.x, offsetY: y - piece.y, dragX: piece.x, dragY: piece.y };
+    render();
+  }
+
+  function moveDrag(ev) {
+    if (!dragState || busy) return;
+    const {x, y} = pointerPos(ev);
+    dragState.dragX = x - dragState.offsetX;
+    dragState.dragY = y - dragState.offsetY;
+    render();
+  }
+  
+  function endDrag(ev) {
+    if (!dragState || busy) return;
+    const {x, y} = pointerPos(ev);
+    const piece = dragState.piece;
+    const {row, col} = cellFromPixel(x, y);
+
+    if (canPlace(piece, row, col)) {
+      // Two-phase drop: capture transient drop state and animate per-row ticks.
+      startDropAnimation(piece, row, col);
+    }
+
+    dragState = null;
+    render();
+  }
+
+  function resetGame() {
+    board = Array.from({ length: boardRows }, () => Array(boardCols).fill(0));
+    busy = false;
+    dragState = null;
+    activeDrop = null;
+    updateScore(0);
+    buildTray();
+    render();
+  }
+
+  canvas.addEventListener('pointerdown', beginDrag);
+  canvas.addEventListener('pointermove', moveDrag);
+  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointercancel', endDrag);
+  document.getElementById('reset').addEventListener('click', resetGame);
+
+  resetGame();
+})();
+</script>
   <title>Block Bloom</title>
 </head>
 <body>

@@ -68,42 +68,31 @@
   const piecesEl = document.getElementById('pieces');
   const newGameBtn = document.getElementById('newGame');
   const undoBtn = document.getElementById('undo');
-  const levelEl = document.getElementById('level');
 
-  const SPEED = {1:1000,2:800,3:560,4:330,5:160};
-
-  let board, pieces, score, drag, history, busy;
-
+  let board, pieces, score, drag, history;
   const pick = a => a[Math.floor(Math.random()*a.length)];
   const cs = () => canvas.width / SIZE;
+  const cloneCell = c => c ? { ...c } : null;
 
   function fitCanvas() {
     const r = canvas.getBoundingClientRect();
     const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const w = Math.round(r.width * dpr);
-    const h = Math.round(r.height * dpr);
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   }
-
-  const cloneCell = c => c ? { ...c } : null;
-  const cloneState = () => ({
-    board: board.map(r => r.map(cloneCell)),
-    pieces: JSON.parse(JSON.stringify(pieces)),
-    score
-  });
 
   function makePiece(){ return { shape: pick(SHAPES), color: pick(COLORS), used:false }; }
 
   function newGame() {
     board = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
     pieces = [makePiece(), makePiece(), makePiece()];
-    score = 0; drag = null; busy = false; history = [];
+    score = 0; drag = null; history = [];
     updateHud(); renderPieces(); draw();
   }
 
   function updateHud() {
     scoreEl.textContent = String(score);
-    undoBtn.disabled = history.length === 0 || busy;
+    undoBtn.disabled = history.length === 0;
   }
 
   function canPlace(piece,row,col){
@@ -124,7 +113,6 @@
       const mini = document.createElement('div');
       mini.className = 'mini';
       mini.style.gridTemplateColumns = `repeat(${p.shape[0].length}, auto)`;
-
       p.shape.forEach(row => row.forEach(v => {
         const d = document.createElement('div');
         d.className = 'cell' + (v ? '' : ' empty');
@@ -138,71 +126,62 @@
     });
   }
 
-  function boardPos(e,piece){
+  function pointerToCanvas(ev){
     const rect = canvas.getBoundingClientRect();
-    const x = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const y = (e.clientY - rect.top) * (canvas.height / rect.height);
-    const size = cs();
     return {
-      row: Math.round(y / size - piece.shape.length / 2),
-      col: Math.round(x / size - piece.shape[0].length / 2)
+      x: (ev.clientX - rect.left) * (canvas.width / rect.width),
+      y: (ev.clientY - rect.top) * (canvas.height / rect.height)
     };
   }
 
-  function startDrag(e){
-    if (busy) return;
-    const idx = Number(e.currentTarget.dataset.index);
-    const piece = pieces[idx];
-    if (!piece || piece.used) return;
-    drag = { idx, piece, pos: null };
-    moveDrag(e);
+  function boardPosFromPointer(ev, piece){
+    const p = pointerToCanvas(ev), size = cs();
+    return {
+      row: Math.round(p.y / size - piece.shape.length / 2),
+      col: Math.round(p.x / size - piece.shape[0].length / 2)
+    };
   }
 
-  function moveDrag(e){
-    if (!drag) return;
-    drag.pos = boardPos(e, drag.piece);
+  function startDrag(ev){
+    const idx = Number(ev.currentTarget.dataset.index);
+    const piece = pieces[idx];
+    if (!piece || piece.used) return;
+    drag = { idx, piece, evX: ev.clientX, evY: ev.clientY, boardPos: null };
+    drag.boardPos = boardPosFromPointer(ev, piece);
     draw();
   }
 
-  function clearLines(){
-    const rows = [], cols = [];
-    for (let r=0;r<SIZE;r++) if (board[r].every(Boolean)) rows.push(r);
-    for (let c=0;c<SIZE;c++){
-      let full = true;
-      for (let r=0;r<SIZE;r++) if (!board[r][c]) full = false;
-      if (full) cols.push(c);
-    }
-    const clearSet = new Set();
-    rows.forEach(r => { for (let c=0;c<SIZE;c++) clearSet.add(`${r},${c}`); });
-    cols.forEach(c => { for (let r=0;r<SIZE;r++) clearSet.add(`${r},${c}`); });
-    clearSet.forEach(k => { const [r,c] = k.split(',').map(Number); board[r][c] = null; });
-    if (clearSet.size) {
-      const lines = rows.length + cols.length;
-      score += lines * 160 + clearSet.size * 6;
-    }
-  }
-
-  function lockPiece(piece,row,col){
-    piece.shape.forEach((sr,rr)=>sr.forEach((f,cc)=>{
-      if(f) board[row+rr][col+cc] = { color: piece.color };
-    }));
-    score += piece.shape.flat().filter(Boolean).length * 8;
-    clearLines();
+  function moveDrag(ev){
+    if (!drag) return;
+    drag.evX = ev.clientX;
+    drag.evY = ev.clientY;
+    drag.boardPos = boardPosFromPointer(ev, drag.piece);
+    draw();
   }
 
   function endDrag(){
-    if (!drag || busy) return;
-    const d = drag; drag = null;
-    if (!d.pos || !canPlace(d.piece,d.pos.row,d.pos.col)) { draw(); return; }
+    if (!drag) return;
+    const d = drag;
+    drag = null;
 
-    history.push(cloneState());
-    pieces[d.idx].used = true;
-    lockPiece(d.piece, d.pos.row, d.pos.col);
+    if (d.boardPos && canPlace(d.piece, d.boardPos.row, d.boardPos.col)) {
+      history.push({
+        board: board.map(r => r.map(cloneCell)),
+        pieces: JSON.parse(JSON.stringify(pieces)),
+        score
+      });
 
-    if (pieces.every(p => p.used)) pieces = [makePiece(), makePiece(), makePiece()];
+      pieces[d.idx].used = true;
+      d.piece.shape.forEach((sr,rr)=>sr.forEach((f,cc)=>{
+        if(f) board[d.boardPos.row+rr][d.boardPos.col+cc] = { color: d.piece.color };
+      }));
+      score += d.piece.shape.flat().filter(Boolean).length * 10;
 
-    updateHud();
-    renderPieces();
+      if (pieces.every(p => p.used)) pieces = [makePiece(), makePiece(), makePiece()];
+      updateHud();
+      renderPieces();
+    }
+
     draw();
   }
 
@@ -222,17 +201,36 @@
       }
     }
 
-    if (drag && drag.pos) {
-      const ok = canPlace(drag.piece, drag.pos.row, drag.pos.col);
+    // board ghost
+    if (drag && drag.boardPos) {
+      const ok = canPlace(drag.piece, drag.boardPos.row, drag.boardPos.col);
       drag.piece.shape.forEach((sr,rr)=>sr.forEach((f,cc)=>{
         if(!f) return;
-        const r = drag.pos.row + rr, c = drag.pos.col + cc;
+        const r = drag.boardPos.row + rr, c = drag.boardPos.col + cc;
         if (r<0 || c<0 || r>=SIZE || c>=SIZE) return;
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.45;
         ctx.fillStyle = ok ? drag.piece.color : '#ff3b5f';
         ctx.fillRect(c*size+8,r*size+8,size-16,size-16);
         ctx.globalAlpha = 1;
       }));
+    }
+
+    // floating dragged piece (follows cursor)
+    if (drag) {
+      const rect = canvas.getBoundingClientRect();
+      const px = (drag.evX - rect.left) * (canvas.width / rect.width);
+      const py = (drag.evY - rect.top) * (canvas.height / rect.height);
+      const w = drag.piece.shape[0].length;
+      const h = drag.piece.shape.length;
+      const originX = px - (w * size) / 2;
+      const originY = py - (h * size) / 2;
+      ctx.globalAlpha = 0.9;
+      drag.piece.shape.forEach((sr,rr)=>sr.forEach((f,cc)=>{
+        if(!f) return;
+        ctx.fillStyle = drag.piece.color;
+        ctx.fillRect(originX + cc*size + 6, originY + rr*size + 6, size-12, size-12);
+      }));
+      ctx.globalAlpha = 1;
     }
   }
 
@@ -242,7 +240,6 @@
   window.addEventListener('resize', draw);
 
   undoBtn.addEventListener('click', () => {
-    if (busy) return;
     const prev = history.pop();
     if (!prev) return;
     board = prev.board.map(r => r.map(cloneCell));
@@ -252,8 +249,6 @@
   });
 
   newGameBtn.addEventListener('click', newGame);
-  levelEl.addEventListener('change', () => SPEED[levelEl.value]); // kept for future drop-anim speeds
-
   newGame();
 })();
 </script>

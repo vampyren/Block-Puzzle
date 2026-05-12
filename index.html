@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Block Bloom</title>
   <style>
-    .kbp-wrap { --kbp-ink:#fff; --kbp-panel:rgba(28,42,103,.58); --kbp-board:#202a5d; --kbp-yellow:#ffd22e; box-sizing:border-box; min-height:100svh; display:grid; place-items:center; padding:clamp(14px,2.6vw,34px); font-family:Inter,ui-sans-serif,system-ui; color:var(--kbp-ink); background:radial-gradient(circle at 12% 10%, rgba(236, 77, 255, 0.42), transparent 26%),radial-gradient(circle at 86% 16%, rgba(47, 114, 255, 0.42), transparent 28%),radial-gradient(circle at 56% 92%, rgba(255, 210, 46, 0.22), transparent 28%),linear-gradient(150deg, #395ac2 0%, #536fc9 46%, #364bb0 100%); overflow:hidden; }
+    .kbp-wrap { --kbp-ink:#fff; --kbp-panel:rgba(28,42,103,.58); --kbp-board:#202a5d; --kbp-yellow:#ffd22e; box-sizing:border-box; min-height:100svh; display:grid; place-items:center; padding:clamp(14px,2.6vw,34px); font-family:Inter,ui-sans-serif,system-ui; color:var(--kbp-ink); background:radial-gradient(circle at 12% 10%, rgba(236, 77, 255, 0.42), transparent 26%),radial-gradient(circle at 86% 16%, rgba(47, 114, 255, 0.42), transparent 28%),radial-gradient(circle at 56% 92%, rgba(255, 210, 46, 0.22), transparent 28%),linear-gradient(150deg, #395ac2 0%, #536fc9 46%, #364bb0 100%); overflow:visible; }
     .kbp-wrap *, .kbp-wrap *::before, .kbp-wrap *::after { box-sizing: border-box; }
-    .kbp-shell { width:min(100%,1240px); height:min(920px,calc(100dvh - 24px)); display:grid; grid-template-rows:auto auto minmax(0,1fr); gap:clamp(10px,1.2vw,16px); padding:clamp(12px,1.7vw,20px); border-radius:34px; background:linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.07)); border:1px solid rgba(255,255,255,0.20); box-shadow:0 34px 110px rgba(10,16,55,0.38); backdrop-filter:blur(18px); }
+    .kbp-shell { width:min(100%,1240px); height:min(920px,calc(100dvh - 24px)); max-height:calc(100dvh - 24px); display:grid; grid-template-rows:auto auto minmax(0,1fr); gap:clamp(10px,1.2vw,16px); padding:clamp(12px,1.7vw,20px); border-radius:34px; background:linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.07)); border:1px solid rgba(255,255,255,0.20); box-shadow:0 34px 110px rgba(10,16,55,0.38); backdrop-filter:blur(18px); }
     .kbp-topbar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:16px; }
     .kbp-scorepill { justify-self:start; display:flex; align-items:center; gap:12px; padding:10px 16px; border-radius:999px; color:#fff; }
     .kbp-scorepill .kbp-icon { font-size:clamp(2rem,4vw,3.4rem); }
@@ -18,12 +18,12 @@
     .kbp-title { text-align:center; }
     .kbp-title h2 { margin:0; font-size:clamp(2rem,4vw,4.4rem); }
     .kbp-gamearea { display:grid; grid-template-columns:minmax(0,1fr) minmax(230px,310px); align-items:stretch; min-height:0; height:100%; gap:clamp(10px,1.4vw,18px); }
-    .kbp-board-wrap { position:relative; height:min(100%,700px); width:auto; max-width:100%; justify-self:center; align-self:start; aspect-ratio:1; border-radius:26px; padding:8px; background:linear-gradient(145deg, rgba(255,255,255,.22), rgba(9,16,56,.32)); }
+    .kbp-board-wrap { position:relative; width:min(100%,58dvh,650px); height:auto; max-height:100%; justify-self:center; align-self:start; aspect-ratio:1/1; border-radius:26px; padding:8px; background:linear-gradient(145deg, rgba(255,255,255,.22), rgba(9,16,56,.32)); }
     #kbp-board { display:block; width:100%; height:100%; border-radius:20px; background:var(--kbp-board); touch-action:none; }
-    .kbp-side { display:grid; min-height:0; align-content:start; gap:10px; }
+    .kbp-side { display:grid; min-height:0; align-content:start; gap:8px; }
     .kbp-next, .kbp-actions, .kbp-help, .kbp-levelbox { border:1px solid rgba(255,255,255,0.18); border-radius:28px; background:var(--kbp-panel); padding:clamp(10px,1.4vw,16px); }
     .kbp-pieces { display:grid; grid-template-columns:1fr; gap:14px; }
-    .kbp-piece { min-height:clamp(90px,11dvh,136px); display:grid; place-items:center; border:1px solid rgba(255,255,255,0.18); border-radius:24px; cursor:grab; }
+    .kbp-piece { min-height:clamp(80px,9dvh,124px); display:grid; place-items:center; border:1px solid rgba(255,255,255,0.18); border-radius:24px; cursor:grab; }
     .kbp-piece.used { opacity:.22; pointer-events:none; }
     .kbp-mini-grid { display:grid; gap:5px; }
     .kbp-mini-cell { width:clamp(22px,2.1vw,34px); height:clamp(22px,2.1vw,34px); border-radius:7px; background:linear-gradient(145deg, color-mix(in srgb, var(--piece-color), white 28%), var(--piece-color) 52%, color-mix(in srgb, var(--piece-color), black 24%)); }
